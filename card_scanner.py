@@ -1,6 +1,5 @@
 import math
 from io import BytesIO
-from pathlib import Path
 
 import cv2
 import numpy as np
@@ -10,6 +9,7 @@ Image.MAX_IMAGE_PIXELS = 143116200
 DISPLAY_WIDTH = 620
 
 def main():
+    template = cv2.imread("bridge-card.png")
     original = cv2.imread('images/page4.png')
     full_width, full_height, channels = original.shape
     scale = DISPLAY_WIDTH / full_width
@@ -44,9 +44,6 @@ def main():
                                        (anchor_size, anchor_size))
     edges = cv2.dilate(edges, kernel)
     # show_cv(edges)
-    display = image
-    min_line_length = width * 0.03
-    max_line_gap = width * 0.015
     lines = cv2.HoughLinesP(edges,
                             1,
                             np.pi / 180,
@@ -77,21 +74,13 @@ def main():
                 vertical_lines.append(line)
             else:
                 horizontal_lines.append(line)
+            assert colour is not None
             # cv2.line(display, (x1, y1), (x2, y2), colour, 2)
 
     # converted = cv2.cvtColor(display, cv2.COLOR_HSV2BGR)
     # show_cv(display)
     # return
 
-    # show_cv(display)
-    # return
-    # vertical_lines.sort(key=lambda x: (x[0], x[1]))
-    # for i, line in enumerate(vertical_lines):
-    #     if i == 0:
-    #         cv2.line(display, line[:2], line[2:], (255, 0, 0), 2)
-    # for i, line in enumerate(horizontal_lines):
-    #     if i == 0:
-    #         cv2.line(display, line[:2], line[2:], (0, 255, 0), 2)
     print(f'Finding intersections in {len(horizontal_lines)} horizontal '
           f'and {len(vertical_lines)} vertical lines.')
     intersections = []
@@ -163,34 +152,32 @@ def main():
                                       -rotation*180/np.pi,
                                       1)
     display = cv2.warpAffine(original, rot_mat, (full_height, full_width))
-    # cv2.line(display, v[:2], v[2:], (255, 0, 0), 2)
 
     cropped = display[
               round(top_left[1]/scale):round((top_left[1]+card_height)/scale),
               round(top_left[0]/scale):round((top_left[0]+card_width)/scale)]
-
-    show_cv(cropped)
-    # display = image.convert("RGB")
-    # display_bytes = BytesIO()
-    # display.save(display_bytes, "PNG")
-    # display_array = np.asarray(bytearray(display_bytes.getvalue()), dtype="uint8")
-    # display_cv = cv2.imdecode(display_array, 0)
-
-    # # Detecting Edges on the Image using the argument ImageFilter.FIND_EDGES
-    # edges = image.filter(ImageFilter.FIND_EDGES)
-
-    # edges_bytes = BytesIO()
-    # image.save(edges_bytes, "PNG")
-    # bytes_array = np.asarray(bytearray(edges_bytes.getvalue()), dtype=np.uint8)
-    # edges_cv = cv2.imdecode(bytes_array, 0)
-    # cv2.ximgproc.EdgeDrawing.detectEdges(edges_cv)
-    # # edges = cv2.xim
-    # contours = cv2.findContours(edges_cv,
-    #                             cv2.RETR_EXTERNAL,
-    #                             cv2.CHAIN_APPROX_SIMPLE)
-    # cv2.drawContours(display_cv, contours[0], 0, 0)
-
-    # show_cv(image)
+    full_card_height, full_card_width, channels = cropped.shape
+    final_height, final_width, channels = template.shape
+    card_scale = min(final_width / full_card_width,
+                     final_height / full_card_height) * 0.9
+    scaled_card = cv2.resize(cropped, None, fx=card_scale, fy=card_scale)
+    scaled_height, scaled_width, channels = scaled_card.shape
+    gray_template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+    threshold = cv2.threshold(gray_template,
+                              0,
+                              255,
+                              cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+    inverted_threshold = 255 - threshold
+    masked_template = cv2.bitwise_and(template, template, mask=inverted_threshold)
+    padded_card = template.copy()
+    top_padding = (final_height - scaled_height) // 2
+    side_padding = (final_width - scaled_width) // 2
+    padded_card[
+        top_padding:top_padding+scaled_height,
+        side_padding:side_padding+scaled_width] = scaled_card
+    masked_card = cv2.bitwise_and(padded_card, padded_card, mask=threshold)
+    masked_card = cv2.add(masked_card, masked_template)
+    show_cv(masked_card)
 
 
 def add_corner(card_corner, card_rect):
@@ -260,7 +247,7 @@ def find_intersection(line1, line2):
 
 def cluster_points(points, nclusters):
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
-    x = points.dtype
+    # noinspection PyTypeChecker
     _, _, centers = cv2.kmeans(points,
                                nclusters,
                                None,

@@ -9,8 +9,18 @@ from PIL import Image
 Image.MAX_IMAGE_PIXELS = 143116200
 DISPLAY_WIDTH = 620
 
-def main():
-    image_path = Path('images_in/2.png')
+def main() -> None:
+    in_folder = Path('images_in')
+    image_path: Path
+    for image_path in sorted(in_folder.glob('*.png')):
+        scan_image(image_path)
+        if __name__ == '__live_coding__':
+            break
+        print(image_path.name)
+
+
+def scan_image(image_path: Path) -> None:
+    out_folder = Path('images_out')
     template = cv2.imread("bridge-card.png")
     original = cv2.imread(str(image_path))
     blank = cv2.imread('images/blank-big.png')
@@ -28,8 +38,8 @@ def main():
     hsv = cv2.GaussianBlur(hsv, (5, 5), 0)
 
     # Define lower and uppper limits of what we call "brown"
-    brown_lo = np.array([140, 10, 0])
-    brown_hi = np.array([160, 255, 255])
+    brown_lo = np.array([145, 50, 150])
+    brown_hi = np.array([150, 70, 200])
 
     # Mask image to only select browns
     mask = cv2.inRange(hsv, brown_lo, brown_hi)
@@ -49,6 +59,8 @@ def main():
                                        (anchor_size, anchor_size))
     edges = cv2.dilate(edges, kernel)
     # show_cv(edges)
+    # return
+
     lines = cv2.HoughLinesP(edges,
                             1,
                             np.pi / 180,
@@ -80,10 +92,10 @@ def main():
             else:
                 horizontal_lines.append(line)
             assert colour is not None
-            # cv2.line(display, (x1, y1), (x2, y2), colour, 2)
+            # cv2.line(image, (x1, y1), (x2, y2), colour, 2)
 
     # converted = cv2.cvtColor(display, cv2.COLOR_HSV2BGR)
-    # show_cv(display)
+    # show_cv(image)
     # return
 
     intersections = []
@@ -99,8 +111,6 @@ def main():
             # cv2.line(display, closest_line[:2], closest_line[2:], (0, 255, 0), 2)
             x_i, y_i = find_intersection(v, closest_line)
             intersections.append((x_i, y_i))
-            if len(intersections) % 100 == 0:
-                print(f'Found {len(intersections)} intersections.')
 
     card_rects = []
     intersections_array = np.array(intersections, dtype=np.float32)
@@ -112,11 +122,19 @@ def main():
         card_rect = []
         card_corner = find_closest_point(p_corner, centres)
         add_corner(card_corner, card_rect)
-        # cv2.circle(display, (x, y), 2, (0, 0, 255), -1)
+        # cv2.circle(image,
+        #            [round(x) for x in card_corner],
+        #            2,
+        #            (0, 0, 255),
+        #            -1)
 
         short_corner = find_closest_point(card_corner, centres, exclude_gap=0)
         add_corner(short_corner, card_rect)
-        # cv2.circle(display, (x, y), 2, (0, 0, 255), -1)
+        # cv2.circle(image,
+        #            [round(x) for x in short_corner],
+        #            2,
+        #            (0, 0, 255),
+        #            -1)
 
         short_vector = (short_corner - card_corner)
         dx, dy = short_vector * 1.5
@@ -124,108 +142,120 @@ def main():
         target = (x_i + dy, y_i + dx*y_sign)
         long_corner = find_closest_point(target, centres)
         add_corner(long_corner, card_rect)
-        # cv2.circle(display, (x, y), 2, (0, 0, 255), -1)
+        # cv2.circle(image,
+        #            [round(x) for x in long_corner],
+        #            2,
+        #            (0, 0, 255),
+        #            -1)
 
         long_vector = (long_corner - card_corner)
         far_target = card_corner + short_vector + long_vector
         far_corner = find_closest_point(far_target, centres)
         add_corner(far_corner, card_rect)
-        # cv2.circle(display, (x, y), 2, (0, 0, 255), -1)
+        # cv2.circle(image,
+        #            [round(x) for x in far_corner],
+        #            2,
+        #            (0, 0, 255),
+        #            -1)
 
         card_rects.append(card_rect)
 
-    card_index = 3
-    card_rect = card_rects[card_index]
-    is_back = card_name == 'x' and card_index >= 2
+    for card_index, (card_rect, suit_name) in enumerate(zip(card_rects, 'aefw')):
+        is_back = card_name == 'x' and card_index >= 2
 
-    top_left = find_closest_point((0, 0), card_rect)
-    top_right = find_closest_point((width, 0), card_rect)
-    bottom_left = find_closest_point((0, height), card_rect)
-    bottom_right = find_closest_point((width, height), card_rect)
-    left_dir = np.arctan2(bottom_left[1] - top_left[1],
-                          top_left[0] - bottom_left[0])
-    top_dir = np.arctan2(top_left[1] - top_right[1],
-                         top_right[0] - top_left[0])
-    right_dir = np.arctan2(bottom_right[1] - top_right[1],
-                           top_right[0] - bottom_right[0])
-    bottom_dir = np.arctan2(bottom_left[1] - bottom_right[1],
-                            bottom_right[0] - bottom_left[0])
-    rotation = (left_dir + right_dir + top_dir + bottom_dir - np.pi) / 4
-    card_width = round(np.linalg.norm(top_right - top_left))
-    card_height = round(np.linalg.norm(top_left - bottom_left))
+        top_left = find_closest_point((0, 0), card_rect)
+        top_right = find_closest_point((width, 0), card_rect)
+        bottom_left = find_closest_point((0, height), card_rect)
+        bottom_right = find_closest_point((width, height), card_rect)
+        left_dir = np.arctan2(bottom_left[1] - top_left[1],
+                              top_left[0] - bottom_left[0])
+        top_dir = np.arctan2(top_left[1] - top_right[1],
+                             top_right[0] - top_left[0])
+        right_dir = np.arctan2(bottom_right[1] - top_right[1],
+                               top_right[0] - bottom_right[0])
+        bottom_dir = np.arctan2(bottom_left[1] - bottom_right[1],
+                                bottom_right[0] - bottom_left[0])
+        rotation = (left_dir + right_dir + top_dir + bottom_dir - np.pi) / 4
+        card_width = round(np.linalg.norm(top_right - top_left))
+        card_height = round(np.linalg.norm(top_left - bottom_left))
 
-    rot_mat = cv2.getRotationMatrix2D(top_left.astype(np.float32)/scale,
-                                      -rotation*180/np.pi,
-                                      1)
-    display = cv2.warpAffine(original, rot_mat, (full_width, full_height))
+        rot_mat = cv2.getRotationMatrix2D(top_left.astype(np.float32)/scale,
+                                          -rotation*180/np.pi,
+                                          1)
+        display = cv2.warpAffine(original, rot_mat, (full_width, full_height))
 
-    cropped = display[
-              round(top_left[1]/scale):round((top_left[1]+card_height)/scale),
-              round(top_left[0]/scale):round((top_left[0]+card_width)/scale)]
-    full_card_height, full_card_width, channels = cropped.shape
-    final_height, final_width, channels = template.shape
-    if is_back:
-        card_scale = min(final_width / full_card_width,
-                         final_height / full_card_height) * 1.04  # back
-    else:
-        card_scale = min(final_width / full_card_width,
-                         final_height / full_card_height) * 0.9  # front
-    scaled_card = cv2.resize(cropped, None, fx=card_scale, fy=card_scale)
-    scaled_height, scaled_width, channels = scaled_card.shape
+        cropped = display[
+                  round(top_left[1]/scale):round((top_left[1]+card_height)/scale),
+                  round(top_left[0]/scale):round((top_left[0]+card_width)/scale)]
+        full_card_height, full_card_width, channels = cropped.shape
+        final_height, final_width, channels = template.shape
+        if is_back:
+            card_scale = min(final_width / full_card_width,
+                             final_height / full_card_height) * 1.04  # back
+        else:
+            card_scale = min(final_width / full_card_width,
+                             final_height / full_card_height) * 0.9  # front
+        scaled_card = cv2.resize(cropped, None, fx=card_scale, fy=card_scale)
+        scaled_height, scaled_width, channels = scaled_card.shape
 
-    blank_cropped = blank[
-              100:100+round(final_height/card_scale),
-              :round(final_width/card_scale)]
-    padded_card = cv2.resize(blank_cropped,
-                             None,
-                             fx=card_scale,
-                             fy=card_scale)
+        blank_cropped = blank[
+                  100:100+round(final_height/card_scale),
+                  :round(final_width/card_scale)]
+        padded_card = cv2.resize(blank_cropped,
+                                 None,
+                                 fx=card_scale,
+                                 fy=card_scale)
 
-    gray_template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
-    threshold = cv2.threshold(gray_template,
-                              140,
-                              255,
-                              cv2.THRESH_BINARY)[1]
-    inverted_threshold = 255 - threshold
-    masked_template = cv2.bitwise_and(template, template, mask=inverted_threshold)
-    top_padding = (final_height - scaled_height) // 2
-    side_padding = (final_width - scaled_width) // 2
-    if top_padding > 0:
-        top_trimmed = 0
-    else:
-        top_trimmed = -top_padding
-        top_padding = 0
-    if side_padding > 0:
-        side_trimmed = 0
-    else:
-        side_trimmed = -side_padding
-        side_padding = 0
+        gray_template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+        threshold = cv2.threshold(gray_template,
+                                  140,
+                                  255,
+                                  cv2.THRESH_BINARY)[1]
+        inverted_threshold = 255 - threshold
+        masked_template = cv2.bitwise_and(template, template, mask=inverted_threshold)
+        top_padding = (final_height - scaled_height) // 2
+        side_padding = (final_width - scaled_width) // 2
+        if top_padding > 0:
+            top_trimmed = 0
+        else:
+            top_trimmed = -top_padding
+            top_padding = 0
+        if side_padding > 0:
+            side_trimmed = 0
+        else:
+            side_trimmed = -side_padding
+            side_padding = 0
 
-    scaled_source = scaled_card[
-                    top_trimmed:top_trimmed + final_height,
-                    side_trimmed:side_trimmed + final_width]
-    if is_back:
-        padded_card[
-        top_padding:top_padding + scaled_height,
-        side_padding:side_padding + scaled_width] = scaled_source
-    else:
-        mask = np.zeros(shape=(scaled_height, scaled_width), dtype=scaled_card.dtype)
-        centre = (final_width//2, final_height//2)
-        mask_margin = 0.03
-        mask[
-            round(scaled_height*mask_margin):round(scaled_height*(1-mask_margin)),
-            round(scaled_width*mask_margin):round(scaled_width*(1-mask_margin))] = 255
-        padded_card = cv2.seamlessClone(scaled_source,
-                                        padded_card,
-                                        mask,
-                                        centre,
-                                        cv2.MIXED_CLONE)
-    masked_card = cv2.bitwise_and(padded_card, padded_card, mask=threshold)
-    is_template_shown = False
-    if is_template_shown:
-        padded_card = masked_card + masked_template
+        scaled_source = scaled_card[
+                        top_trimmed:top_trimmed + final_height,
+                        side_trimmed:side_trimmed + final_width]
+        if is_back:
+            padded_card[
+            top_padding:top_padding + scaled_height,
+            side_padding:side_padding + scaled_width] = scaled_source
+        else:
+            mask = np.zeros(shape=(scaled_height, scaled_width), dtype=scaled_card.dtype)
+            centre = (final_width//2, final_height//2)
+            mask_margin = 0.03
+            mask[
+                round(scaled_height*mask_margin):round(scaled_height*(1-mask_margin)),
+                round(scaled_width*mask_margin):round(scaled_width*(1-mask_margin))] = 255
+            padded_card = cv2.seamlessClone(scaled_source,
+                                            padded_card,
+                                            mask,
+                                            centre,
+                                            cv2.MIXED_CLONE)
+        masked_card = cv2.bitwise_and(padded_card, padded_card, mask=threshold)
+        combined_card = masked_card + masked_template
 
-    show_cv(padded_card)
+        card_out_path = out_folder / f'card-{card_name}-{suit_name}.png'
+        cv2.imwrite(str(card_out_path), padded_card)
+        template_out_path = out_folder / f'template-{card_name}-{suit_name}.png'
+        cv2.imwrite(str(template_out_path), combined_card)
+
+        if card_index == 0 and __name__ == '__live_coding__':
+            show_cv(padded_card)
+            return
 
 
 def add_corner(card_corner, card_rect):

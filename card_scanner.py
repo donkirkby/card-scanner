@@ -9,6 +9,14 @@ from PIL import Image
 Image.MAX_IMAGE_PIXELS = 143116200
 DISPLAY_WIDTH = 620
 
+# card-suit: (left, top, right, bottom) margins are fraction of width or height
+MARGIN_OVERRIDES = {'k-w': (0.05, 0, -0.04, 0),
+                    'j-e': (0, 0, 0, 0.0175),
+                    'j-a': (0, 0, 0.02, 0),
+                    'j-w': (0, 0, 0.02, 0),
+                    't-e': (0, 0, 0.02, 0),  # min 0.01
+                    'a-a': (0, 0, 0.02, 0)}  # min 0.01
+
 def main() -> None:
     in_folder = Path('images_in')
     image_path: Path
@@ -163,10 +171,32 @@ def scan_image(image_path: Path) -> None:
     for card_index, (card_rect, suit_name) in enumerate(zip(card_rects, 'aefw')):
         is_back = card_name == 'x' and card_index >= 2
 
+        margin_override = MARGIN_OVERRIDES.get(f'{card_name}-{suit_name}',
+                                               (0, 0, 0, 0))
+
+
         top_left = find_closest_point((0, 0), card_rect)
         top_right = find_closest_point((width, 0), card_rect)
         bottom_left = find_closest_point((0, height), card_rect)
         bottom_right = find_closest_point((width, height), card_rect)
+        (left_override,
+         top_override,
+         right_override,
+         bottom_override) = margin_override
+        start_width = round(np.linalg.norm(top_right - top_left))
+        start_height = round(np.linalg.norm(top_left - bottom_left))
+        if left_override:
+            top_left[0] -= start_width * left_override
+            bottom_left[0] -= start_width * left_override
+        if right_override:
+            top_right[0] += start_width * right_override
+            bottom_right[0] += start_width * right_override
+        if top_override:
+            top_left[1] -= start_height * top_override
+            top_right[1] -= start_height * top_override
+        if bottom_override:
+            bottom_left[1] += start_height * bottom_override
+            bottom_right[1] += start_height * bottom_override
         left_dir = np.arctan2(bottom_left[1] - top_left[1],
                               top_left[0] - bottom_left[0])
         top_dir = np.arctan2(top_left[1] - top_right[1],
